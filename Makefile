@@ -1,14 +1,19 @@
+.PHONY: run build fmt test vet clean
+
 run:
 	go run .
 
 build:
-	go build -o bin/iac-sentinel.exe .
+	go build -o bin/iac-sentinel .
 
 fmt:
 	go fmt ./...
 
 test:
-	go test ./...
+	go test ./... -cover
+
+vet:
+	go vet ./...
 
 clean:
-		powershell -Command "Remove-Item -Recurse -Force bin -ErrorAction SilentlyContinue"
+	rm -rf bin
