@@ -14,7 +14,7 @@ Revueur automatique de plans Terraform. IaC Sentinel lit la sortie `terraform pl
 | Fait | Parseur de plan (`internal/tfplan`) |
 | Fait | Classificateur de risque (`internal/risk`) |
 | Fait | Moteur de policies (`internal/policy`, OPA Rego, Checkov/tfsec optionnels) |
-| Suivant | CLI, rendu terminal, `--fail-on` |
+| Fait | CLI (`scan` / `version`), rendu terminal, `--fail-on` |
 | Prévu | Estimation de coût, score ML, explainer LLM, GitHub Action |
 
 ---
@@ -412,25 +412,30 @@ flowchart LR
 ```bash
 make test
 make vet
-make fmt
 make build
+./bin/iac-sentinel version
 ```
 
-Il n’y a pas encore d’entree CLI. Exercer les packages via les tests unitaires et les fixtures sous `testdata/`.
+### Scanner un plan
 
-### Exemples
+```bash
+./bin/iac-sentinel scan -plan testdata/plan_mixed.json
+./bin/iac-sentinel scan -plan plan.json -dir ./infra
+./bin/iac-sentinel scan -plan plan.json -fail-on DANGER
+```
+
+| Flag | Signification |
+|------|---------------|
+| `-plan` | Chemin du JSON `terraform plan -json` (requis) |
+| `-dir` | Dossier HCL pour Checkov/tfsec |
+| `-fail-on` | `SAFE` / `CAUTION` / `DANGER` / `CRITICAL` — exit 1 si atteint |
+| `-skip-checkov` / `-skip-tfsec` / `-skip-opa` | Desactiver un scanner |
+
+### Exemples bibliotheque
 
 ```go
 level := risk.Classify(tfplan.ActionDelete, "aws_db_instance")
 // level == risk.CRITICAL
-```
-
-```go
-result, err := policy.Scan(ctx, plan, policy.ScanOptions{
-    TerraformDir: "./infra",
-})
-// result.Findings — liste unifiee
-// result.Warnings — ex. checkov introuvable ; ignore
 ```
 
 ---
@@ -452,7 +457,7 @@ timeline
 1. Parseur de plan — fait
 2. Classification de risque — fait
 3. Moteur de policies (OPA + wrappers Checkov/tfsec) — fait
-4. Rendu terminal + CLI `scan` / `version` + `--fail-on`
+4. Rendu terminal + CLI `scan` / `version` + `--fail-on` — fait
 5. Estimation statique du delta de cout AWS
 6. Score de risque par regression logistique embarquee
 7. Explainer LLM optionnel (`--no-ai`)

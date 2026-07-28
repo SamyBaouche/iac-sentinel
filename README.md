@@ -14,7 +14,7 @@ Automated reviewer for Terraform plans. IaC Sentinel reads `terraform plan -json
 | Done | Plan parser (`internal/tfplan`) |
 | Done | Risk classifier (`internal/risk`) |
 | Done | Policy engine (`internal/policy`, OPA Rego, optional Checkov/tfsec) |
-| Next | CLI, terminal renderer, `--fail-on` |
+| Done | CLI (`scan` / `version`), terminal renderer, `--fail-on` |
 | Planned | Cost estimation, ML score, LLM explainer, GitHub Action |
 
 ---
@@ -56,9 +56,12 @@ flowchart TB
   ROOT --> GOMOD[go.mod / go.sum]
   ROOT --> MAKE[Makefile]
   ROOT --> README[README.md / README.fr.md]
+  ROOT --> CMD[cmd/iac-sentinel/]
   ROOT --> POLDIR[policies/]
   ROOT --> INTERNAL[internal/]
   ROOT --> TESTDATA[testdata/]
+
+  CMD --> MAIN[main.go]
 
   POLDIR --> P1[s3_public.rego]
   POLDIR --> P2[sg_open.rego]
@@ -70,6 +73,8 @@ flowchart TB
   INTERNAL --> TF[tfplan/]
   INTERNAL --> RK[risk/]
   INTERNAL --> PY[policy/]
+  INTERNAL --> APP[app/]
+  INTERNAL --> REN[render/]
 
   TF --> TF1[types.go]
   TF --> TF2[parse.go]
@@ -121,7 +126,9 @@ flowchart LR
 
 ```mermaid
 flowchart TB
-  CLI["cmd/ CLI - planned"]
+  CLI["cmd/iac-sentinel"]
+  APP[internal/app]
+  RENDER[internal/render]
   RISK[internal/risk]
   POLICY[internal/policy]
   TFPLAN[internal/tfplan]
@@ -129,17 +136,17 @@ flowchart TB
   OPA[OPA Go SDK]
   EXT[Checkov / tfsec CLIs]
 
-  CLI -.->|future| RISK
-  CLI -.->|future| POLICY
-  CLI -.->|future| TFPLAN
-
+  CLI --> APP
+  CLI --> RENDER
+  RENDER --> APP
+  APP --> RISK
+  APP --> POLICY
+  APP --> TFPLAN
   RISK --> TFPLAN
   POLICY --> TFPLAN
   POLICY --> POLICIES
   POLICY --> OPA
   POLICY -.->|os/exec optional| EXT
-
-  style CLI fill:#334155,stroke:#64748b,color:#fff,stroke-dasharray: 5 5
 ```
 
 ### Text layout
@@ -150,6 +157,9 @@ iac-sentinel/
 ├── Makefile
 ├── README.md
 ├── README.fr.md
+├── cmd/iac-sentinel/         CLI entrypoint (scan, version)
+│   ├── main.go
+│   └── main_test.go
 ├── policies/                 OPA Rego rules (embedded in the binary)
 │   ├── embed.go
 │   ├── s3_public.rego
@@ -159,27 +169,11 @@ iac-sentinel/
 │   └── ebs_encryption.rego
 ├── internal/
 │   ├── tfplan/               1. parse plan JSON
-│   │   ├── types.go
-│   │   ├── parse.go
-│   │   ├── summary.go
-│   │   └── tfplan_test.go
 │   ├── risk/                 2. SAFE → CRITICAL
-│   │   ├── risk.go
-│   │   └── risk_test.go
-│   └── policy/               3. Finding + scanners
-│       ├── finding.go
-│       ├── checkov.go
-│       ├── tfsec.go
-│       ├── opa.go
-│       ├── scan.go
-│       └── policy_test.go
+│   ├── policy/               3. Finding + scanners
+│   ├── app/                  4. orchestrate scan + --fail-on
+│   └── render/               5. terminal report
 └── testdata/                 fixtures for unit tests
-    ├── plan_minimal.json
-    ├── plan_mixed.json
-    ├── plan_replace.json
-    ├── plan_not_a_plan.json
-    ├── checkov_failed.json
-    └── tfsec_failed.json
 ```
 
 ---
@@ -413,13 +407,32 @@ flowchart LR
 ```bash
 make test
 make vet
-make fmt
 make build
+./bin/iac-sentinel version
 ```
 
-There is no CLI entrypoint yet. Exercise packages via unit tests and fixtures under `testdata/`.
+### Scan a plan
 
-### Examples
+```bash
+# Analyze a terraform plan JSON file
+./bin/iac-sentinel scan -plan testdata/plan_mixed.json
+
+# Also run Checkov/tfsec against Terraform sources (warn if missing)
+./bin/iac-sentinel scan -plan plan.json -dir ./infra
+
+# Fail CI when risk or findings reach DANGER or above
+./bin/iac-sentinel scan -plan plan.json -fail-on DANGER
+echo $?   # 1 if threshold triggered, 0 otherwise
+```
+
+| Flag | Meaning |
+|------|---------|
+| `-plan` | Path to `terraform plan -json` output (required) |
+| `-dir` | Terraform HCL directory for Checkov/tfsec |
+| `-fail-on` | `SAFE` / `CAUTION` / `DANGER` / `CRITICAL` — exit 1 if reached |
+| `-skip-checkov` / `-skip-tfsec` / `-skip-opa` | Disable individual scanners |
+
+### Library examples
 
 ```go
 level := risk.Classify(tfplan.ActionDelete, "aws_db_instance")
@@ -430,8 +443,6 @@ level := risk.Classify(tfplan.ActionDelete, "aws_db_instance")
 result, err := policy.Scan(ctx, plan, policy.ScanOptions{
     TerraformDir: "./infra",
 })
-// result.Findings — unified list
-// result.Warnings — e.g. checkov not found; skipping
 ```
 
 ---
@@ -442,9 +453,7 @@ result, err := policy.Scan(ctx, plan, policy.ScanOptions{
 timeline
   title Delivery path
   section Completed
-    Parser Risk Policies : tfplan risk policy and Rego
-  section In progress
-    CLI : scan version renderer fail-on
+    Parser Risk Policies CLI : tfplan risk policy Rego scan fail-on
   section Planned
     Cost and ML : AWS delta and logistic score
     Explainer and ship : optional LLM GitHub Action GoReleaser
@@ -453,7 +462,7 @@ timeline
 1. Plan parser — done
 2. Risk classification — done
 3. Policy engine (OPA + Checkov/tfsec wrappers) — done
-4. Terminal renderer + `scan` / `version` CLI + `--fail-on`
+4. Terminal renderer + `scan` / `version` CLI + `--fail-on` — done
 5. Static AWS cost delta estimation
 6. Embedded logistic-regression risk score
 7. Optional LLM explainer (`--no-ai`)
