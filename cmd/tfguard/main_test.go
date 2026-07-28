@@ -2,61 +2,60 @@ package main
 
 import (
 	"bytes"
-	"io"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
 
-func TestRunVersion(t *testing.T) {
-	out := captureStdout(t, func() {
-		if code := run([]string{"version"}); code != 0 {
-			t.Fatalf("exit = %d", code)
-		}
-	})
-	if !strings.Contains(out, "tfguard") {
-		t.Fatalf("version output = %q", out)
+func TestVersion(t *testing.T) {
+	var out, errBuf bytes.Buffer
+	code := executeForTest(&out, &errBuf, []string{"version"})
+	if code != 0 {
+		t.Fatalf("exit = %d stderr=%q", code, errBuf.String())
+	}
+	if !strings.Contains(out.String(), "tfguard") {
+		t.Fatalf("version output = %q", out.String())
 	}
 }
 
-func TestRunScanMissingPlan(t *testing.T) {
-	if code := run([]string{"scan"}); code != 2 {
-		t.Fatalf("exit = %d, want 2", code)
+func TestScanMissingPlan(t *testing.T) {
+	var out, errBuf bytes.Buffer
+	code := executeForTest(&out, &errBuf, []string{"scan"})
+	if code == 0 {
+		t.Fatalf("expected non-zero exit, stdout=%q stderr=%q", out.String(), errBuf.String())
 	}
 }
 
-func TestRunScanFailOn(t *testing.T) {
+func TestScanFailOn(t *testing.T) {
 	plan := filepath.Join("..", "..", "testdata", "plan_mixed.json")
-	code := run([]string{"scan", "-plan", plan, "-fail-on", "DANGER", "-skip-checkov", "-skip-tfsec"})
+	var out, errBuf bytes.Buffer
+	code := executeForTest(&out, &errBuf, []string{
+		"scan",
+		"--plan", plan,
+		"--fail-on", "DANGER",
+		"--skip-checkov",
+		"--skip-tfsec",
+	})
 	if code != 1 {
-		t.Fatalf("exit = %d, want 1", code)
+		t.Fatalf("exit = %d, want 1; stderr=%q stdout=%q", code, errBuf.String(), out.String())
+	}
+	if !strings.Contains(out.String(), "Max risk:") {
+		t.Fatalf("expected report on stdout, got %q", out.String())
 	}
 }
 
-func TestRunUnknownCommand(t *testing.T) {
-	if code := run([]string{"nope"}); code != 2 {
+func TestUnknownCommand(t *testing.T) {
+	var out, errBuf bytes.Buffer
+	code := executeForTest(&out, &errBuf, []string{"nope"})
+	if code == 0 {
+		t.Fatalf("expected non-zero exit for unknown command")
+	}
+}
+
+func TestEmptyArgs(t *testing.T) {
+	var out, errBuf bytes.Buffer
+	code := executeForTest(&out, &errBuf, nil)
+	if code != 2 {
 		t.Fatalf("exit = %d, want 2", code)
 	}
-}
-
-func captureStdout(t *testing.T, fn func()) string {
-	t.Helper()
-	old := os.Stdout
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	os.Stdout = w
-	defer func() { os.Stdout = old }()
-
-	done := make(chan string)
-	go func() {
-		var buf bytes.Buffer
-		_, _ = io.Copy(&buf, r)
-		done <- buf.String()
-	}()
-	fn()
-	_ = w.Close()
-	return <-done
 }

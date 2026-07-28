@@ -34,7 +34,7 @@ flowchart LR
 | Policy | `internal/policy` | OPA Rego (embedded) + optional Checkov/tfsec → `Finding` |
 | Orchestrate | `internal/app` | Build `Report`; evaluate `-fail-on` |
 | Present | `internal/render` | Terminal tables |
-| CLI | `cmd/tfguard` | `scan`, `version` |
+| CLI | `cmd/tfguard` | Cobra commands: `scan`, `version` |
 
 Optional scanners (Checkov/tfsec) emit **warnings** when missing; they do not crash the run by themselves.
 
@@ -68,20 +68,21 @@ Embedded Rego under `policies/` (compiled into the binary via `embed`):
 make test
 make build
 ./bin/tfguard version
+./bin/tfguard scan --help
 
 # Basic review
-./bin/tfguard scan -plan plan.json
+./bin/tfguard scan --plan plan.json
 
 # With HCL scanners + CI gate
-./bin/tfguard scan -plan plan.json -dir ./infra -fail-on DANGER
+./bin/tfguard scan --plan plan.json --dir ./infra --fail-on DANGER
 ```
 
 | Flag | Description |
 |------|-------------|
-| `-plan` | Path to plan JSON (**required**) |
-| `-dir` | Terraform root for Checkov/tfsec |
-| `-fail-on` | `SAFE` \| `CAUTION` \| `DANGER` \| `CRITICAL` |
-| `-skip-checkov` / `-skip-tfsec` / `-skip-opa` | Disable a scanner |
+| `--plan` | Path to plan JSON (**required**) |
+| `--dir` | Terraform root for Checkov/tfsec |
+| `--fail-on` | `SAFE` \| `CAUTION` \| `DANGER` \| `CRITICAL` |
+| `--skip-checkov` / `--skip-tfsec` / `--skip-opa` | Disable a scanner |
 
 **Exit codes:** `0` ok · `1` threshold hit or runtime error · `2` usage error
 

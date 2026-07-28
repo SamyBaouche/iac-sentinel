@@ -22,14 +22,14 @@ flowchart LR
 | Risque | `internal/risk` | Noter chaque changement |
 | Policy | `internal/policy` | OPA + scanners optionnels |
 | Orchestration | `internal/app` | Rapport + fail-on |
-| CLI | `cmd/tfguard` | `scan` / `version` |
+| CLI | `cmd/tfguard` | Commandes Cobra : `scan`, `version` |
 
 ## Usage
 
 ```bash
 make build
-./bin/tfguard scan -plan plan.json
-./bin/tfguard scan -plan plan.json -dir ./infra -fail-on DANGER
+./bin/tfguard scan --plan plan.json
+./bin/tfguard scan --plan plan.json --dir ./infra --fail-on DANGER
 ```
 
 Codes de sortie : `0` ok · `1` seuil / erreur · `2` usage.
