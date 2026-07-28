@@ -1,0 +1,12 @@
+{
+  "failed_checks": [
+    {
+      "check_id": "CKV_AWS_20",
+      "check_name": "Ensure the S3 bucket does not allow READ permissions to everyone",
+      "resource": "aws_s3_bucket.logs",
+      "file_path": "/tmp/main.tf",
+      "guideline": "https://docs.bridgecrew.io/docs/s3_1",
+      "severity": "HIGH"
+    }
+  ]
+}

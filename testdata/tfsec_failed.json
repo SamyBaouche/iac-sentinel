@@ -1,0 +1,16 @@
+{
+  "results": [
+    {
+      "rule_id": "AVD-AWS-0086",
+      "long_id": "aws-s3-enable-bucket-encryption",
+      "description": "Bucket does not have encryption enabled",
+      "severity": "HIGH",
+      "resource": "aws_s3_bucket.logs",
+      "link": "https://aquasecurity.github.io/tfsec",
+      "location": {
+        "filename": "main.tf",
+        "start_line": 12
+      }
+    }
+  ]
+}

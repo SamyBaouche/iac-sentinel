@@ -2,7 +2,7 @@
 
 Automated reviewer for Terraform plans. IaC Sentinel reads `terraform plan -json` output and surfaces destructive changes, policy violations, estimated cost impact, and a plain-language summary so teams do not ship risky infrastructure changes unnoticed.
 
-**Current status:** plan parsing (`internal/tfplan`) and risk classification (`internal/risk`) are implemented and tested. CLI rendering, `--fail-on`, policy checks, cost estimation, and CI integration are planned next.
+**Current status:** plan parsing (`internal/tfplan`), risk classification (`internal/risk`), and the policy engine (`internal/policy` + OPA Rego, optional Checkov/tfsec) are implemented and tested. CLI rendering, `--fail-on`, cost estimation, and CI integration are planned next.
 
 ## Problem
 
@@ -24,7 +24,7 @@ terraform plan -json
    [ PARSER ]     decode resource_changes into typed Go structs   ✓ done
         |
         v
-   [ ANALYZER ]   risk ✓ | policies | cost | ML score             (partial)
+   [ ANALYZER ]   risk ✓ | policies ✓ | cost | ML score           (partial)
         |
         v
    [ EXPLAINER ]  optional LLM summary                            (upcoming)
@@ -40,16 +40,17 @@ iac-sentinel/
 ├── go.mod
 ├── Makefile
 ├── README.md
+├── policies/            # OPA Rego rules (embedded into the binary)
+│   ├── s3_public.rego
+│   ├── sg_open.rego
+│   ├── rds_encryption.rego
+│   ├── iam_wildcard.rego
+│   └── ebs_encryption.rego
 ├── internal/
 │   ├── tfplan/          # plan JSON parsing and summary
-│   │   ├── types.go
-│   │   ├── parse.go
-│   │   ├── summary.go
-│   │   └── tfplan_test.go
-│   └── risk/            # SAFE → CRITICAL classification
-│       ├── risk.go
-│       └── risk_test.go
-└── testdata/            # fixture plans for unit tests
+│   ├── risk/            # SAFE → CRITICAL classification
+│   └── policy/          # Finding + Checkov/tfsec/OPA scanners
+└── testdata/            # fixture plans / scanner JSON for unit tests
 ```
 
 ## What works today
@@ -58,35 +59,42 @@ iac-sentinel/
 
 | Piece | Responsibility |
 |-------|----------------|
-| `types.go` | Typed `Plan`, `ResourceChange`, `Change`; collapses Terraform action lists into a single `Action` (including replace as `["delete","create"]` or `["create","delete"]`) |
+| `types.go` | Typed `Plan`, `ResourceChange`, `Change`; collapses Terraform action lists into a single `Action` |
 | `parse.go` | `Parse` / `ParseFile`; returns `ErrNotAPlan` when `format_version` is missing |
-| `summary.go` | Counts create/update/replace/delete; excludes no-ops and data sources; sorts changes by address for stable output |
-
-`Before` and `After` stay as `json.RawMessage` so later stages can decode only the fields they need (cost attributes, policy input, and so on).
+| `summary.go` | Counts create/update/replace/delete; excludes no-ops and data sources |
 
 ### `internal/risk`
 
 | Piece | Responsibility |
 |-------|----------------|
-| `Level` (`iota`) | `SAFE` → `CAUTION` → `DANGER` → `CRITICAL`, plus `String()` for display |
-| Stateful table | AWS types that hold durable data (RDS, S3, EBS, DynamoDB, EFS, ElastiCache, …) |
-| `Classify(action, resourceType)` | Maps action → base level, then escalates +1 when the resource is stateful (capped at `CRITICAL`) |
+| `Level` | `SAFE` → `CAUTION` → `DANGER` → `CRITICAL` |
+| `Classify(action, resourceType)` | Base level from action; +1 if the resource is stateful |
 
-**Base mapping (non-stateful):**
+### `internal/policy`
 
-| Action | Level |
-|--------|-------|
-| create / no-op / read / unknown | `SAFE` |
-| update | `CAUTION` |
-| replace / delete | `DANGER` |
+| Piece | Responsibility |
+|-------|----------------|
+| `Finding` | Unified issue shape shared by every scanner |
+| `RunCheckov` / `RunTfsec` | Optional CLI wrappers (`os/exec` + JSON parse); **warn if binary missing** |
+| `EvaluateOPA` | Runs embedded Rego policies via the OPA Go SDK |
+| `Scan` | Merges Checkov + tfsec + OPA into one `Result` |
 
-**Examples with escalation:** create S3 → `CAUTION`; update RDS → `DANGER`; delete RDS → `CRITICAL`.
+**Built-in OPA policies (`policies/`):**
+
+| File | ID | What it catches |
+|------|----|-----------------|
+| `s3_public.rego` | `SENTINEL-S3-001` | S3 ACL public-read / public-read-write |
+| `sg_open.rego` | `SENTINEL-SG-001` | Security group open to `0.0.0.0/0` |
+| `rds_encryption.rego` | `SENTINEL-RDS-001` | RDS without `storage_encrypted` |
+| `iam_wildcard.rego` | `SENTINEL-IAM-001` | IAM policy with `Action: "*"` |
+| `ebs_encryption.rego` | `SENTINEL-EBS-001` | EBS volume without encryption |
 
 ## Getting started
 
 ### Prerequisites
 
 - Go 1.26+
+- Optional: [Checkov](https://www.checkov.io/) and/or [tfsec](https://github.com/aquasecurity/tfsec) on `PATH`
 
 ### Build and test
 
@@ -100,41 +108,40 @@ gofmt -l .
 go build ./...
 ```
 
-There is no CLI entrypoint yet. Exercise the packages via unit tests and the fixtures under `testdata/`.
+There is no CLI entrypoint yet. Exercise packages via unit tests and fixtures under `testdata/`.
 
-### Example: load a fixture in tests
-
-Fixtures such as `testdata/plan_mixed.json` cover create, update, replace, delete, data sources, and no-ops. `Summarize` should report one of each mutating action and omit reads/no-ops.
-
-### Example: classify a change
+### Example: classify risk
 
 ```go
-import (
-    "github.com/SamyBaouche/iac-sentinel/internal/risk"
-    "github.com/SamyBaouche/iac-sentinel/internal/tfplan"
-)
-
 level := risk.Classify(tfplan.ActionDelete, "aws_db_instance")
 // level == risk.CRITICAL
-fmt.Println(level.String()) // "CRITICAL"
+```
+
+### Example: run policies on a plan
+
+```go
+result, err := policy.Scan(ctx, plan, policy.ScanOptions{
+    TerraformDir: "./infra", // optional; Checkov/tfsec scan this folder
+})
+// result.Findings → unified list
+// result.Warnings → e.g. "checkov not found on PATH; skipping …"
 ```
 
 ## Roadmap
 
 1. Terminal renderer + `scan` / `version` CLI
-2. Wire risk into the CLI with `--fail-on` (classification package is done)
-3. Policy engine (OPA Rego + optional Checkov/tfsec)
-4. Static AWS cost delta estimation
-5. Embedded logistic-regression risk score
-6. Optional LLM explainer (Ollama / HTTP), disabled with `--no-ai`
-7. GitHub Action (PR comment) and GoReleaser distribution
+2. Wire risk + policies into the CLI with `--fail-on`
+3. Static AWS cost delta estimation
+4. Embedded logistic-regression risk score
+5. Optional LLM explainer (Ollama / HTTP), disabled with `--no-ai`
+6. GitHub Action (PR comment) and GoReleaser distribution
 
 ## Development notes
 
-- Prefer table-driven tests and fixtures over live Terraform in unit tests
+- Prefer table-driven tests and fixtures over live Terraform / live scanners in unit tests
 - Wrap errors with `%w` and keep sentinel errors (`errors.Is`) for control flow
 - Keep packages under `internal/` until a public API is intentionally exported
-- `internal/risk` includes beginner-oriented comments explaining Go syntax alongside the logic
+- Optional scanners must warn, never crash, when the binary is absent
 
 ## License
 
