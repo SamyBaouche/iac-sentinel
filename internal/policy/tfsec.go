@@ -9,6 +9,7 @@ import (
 	"strings"
 )
 
+// Subset of tfsec / aquasec JSON output.
 type tfsecReport struct {
 	Results []tfsecResult `json:"results"`
 }
@@ -25,8 +26,8 @@ type tfsecResult struct {
 	} `json:"location"`
 }
 
-// RunTfsec runs the tfsec CLI on dir.
-// If tfsec is not installed, returns a warning and no error.
+// RunTfsec executes tfsec on dir and converts results to Findings.
+// If the binary is missing, returns a Warning and a nil error.
 func RunTfsec(ctx context.Context, dir string) (Result, error) {
 	path, err := exec.LookPath("tfsec")
 	if err != nil {

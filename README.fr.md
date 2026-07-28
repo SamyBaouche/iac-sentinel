@@ -2,7 +2,7 @@
 
 **Langue :** [English](README.md) | Français
 
-Revue automatique de plans Terraform (AWS). tfguard lit `terraform plan -json`, note le risque des changements et évalue des policies de sécurité pour faire échouer la CI avant un apply destructeur.
+Revue de plans Terraform (AWS) : parse du JSON, classification de risque (`SAFE` → `CRITICAL`), policies OPA (et Checkov/tfsec optionnels), échec CI via `-fail-on`.
 
 ## Pipeline
 
@@ -11,17 +11,18 @@ flowchart LR
   A[plan.json] --> B[tfplan]
   B --> C[risk]
   B --> D[policy]
-  C --> E[rapport CLI]
+  C --> E[app.Report]
   D --> E
-  E --> F["exit 0 | 1 via --fail-on"]
+  E --> F[CLI]
 ```
 
-| Etape | Package | Role |
-|-------|---------|------|
-| Parse | `internal/tfplan` | JSON plan → structures Go |
-| Risque | `internal/risk` | `SAFE` → `CRITICAL` (+ escalade stateful) |
-| Policy | `internal/policy` | OPA embarqué + Checkov/tfsec optionnels |
-| CLI | `cmd/tfguard` | `scan`, `version`, `--fail-on` |
+| Couche | Package | Role |
+|--------|---------|------|
+| Parse | `internal/tfplan` | Lire le plan JSON |
+| Risque | `internal/risk` | Noter chaque changement |
+| Policy | `internal/policy` | OPA + scanners optionnels |
+| Orchestration | `internal/app` | Rapport + fail-on |
+| CLI | `cmd/tfguard` | `scan` / `version` |
 
 ## Usage
 
@@ -31,10 +32,12 @@ make build
 ./bin/tfguard scan -plan plan.json -dir ./infra -fail-on DANGER
 ```
 
-## Risque (rappel)
+Codes de sortie : `0` ok · `1` seuil / erreur · `2` usage.
+
+## Risque
 
 create → `SAFE` · update → `CAUTION` · replace/delete → `DANGER`  
-Ressource stateful (RDS, S3, EBS…) → +1 niveau (plafond `CRITICAL`).
+Stateful (RDS, S3, EBS…) → +1 (max `CRITICAL`).
 
 ## Roadmap
 

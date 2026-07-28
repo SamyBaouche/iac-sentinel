@@ -11,13 +11,15 @@ import (
 	"github.com/open-policy-agent/opa/v1/rego"
 )
 
-// EvaluateOPA evaluates embedded Rego policies against input (usually PlanInput).
+// EvaluateOPA runs embedded Rego policies (policies/*.rego) against input.
+// input is usually the map from PlanInput.
 func EvaluateOPA(ctx context.Context, input any) (Result, error) {
 	modules, err := loadEmbeddedModules()
 	if err != nil {
 		return Result{}, err
 	}
 
+	// Query every package under data.tfguard.*.violation
 	opts := []func(*rego.Rego){
 		rego.Query("data.tfguard[pkg].violation[v]"),
 		rego.Input(input),
@@ -41,6 +43,7 @@ func EvaluateOPA(ctx context.Context, input any) (Result, error) {
 		}
 		findings = append(findings, f)
 	}
+	// Fallback if OPA returns values only via Expressions.
 	if len(findings) == 0 {
 		findings = findingsFromExpressions(rs)
 	}
@@ -111,7 +114,8 @@ func asString(v any) string {
 	return s
 }
 
-// PlanInput converts a Plan into a generic map suitable for OPA input.
+// PlanInput converts a Plan into a generic map for OPA.
+// json.RawMessage before/after fields become real JSON values.
 func PlanInput(p *tfplan.Plan) (map[string]any, error) {
 	if p == nil {
 		return map[string]any{"resource_changes": []any{}}, nil

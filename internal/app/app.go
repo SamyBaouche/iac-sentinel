@@ -1,4 +1,4 @@
-// Package app orchestrates parse → risk → policy into a single Report.
+// Package app wires tfplan + risk + policy into one Report for the CLI.
 package app
 
 import (
@@ -11,7 +11,7 @@ import (
 	"github.com/SamyBaouche/tfguard/internal/tfplan"
 )
 
-// ChangeRisk is one planned change with its risk level.
+// ChangeRisk is one mutating change with its classified risk level.
 type ChangeRisk struct {
 	Address string
 	Type    string
@@ -19,16 +19,16 @@ type ChangeRisk struct {
 	Level   risk.Level
 }
 
-// Report is the full scan result consumed by the CLI renderer.
+// Report is the full scan result rendered by the CLI.
 type Report struct {
 	PlanPath string
 	Summary  tfplan.Summary
 	Changes  []ChangeRisk
-	MaxRisk  risk.Level
+	MaxRisk  risk.Level // highest Level among Changes
 	Policy   policy.Result
 }
 
-// Options controls Run.
+// Options controls Run (plan path and which scanners to skip).
 type Options struct {
 	PlanPath     string
 	TerraformDir string
@@ -37,7 +37,7 @@ type Options struct {
 	SkipOPA      bool
 }
 
-// Run loads the plan, classifies each change, and runs policy scanners.
+// Run parses the plan, classifies each change, and runs policy scanners.
 func Run(ctx context.Context, opts Options) (Report, error) {
 	plan, err := tfplan.ParseFile(opts.PlanPath)
 	if err != nil {
@@ -81,8 +81,8 @@ func Run(ctx context.Context, opts Options) (Report, error) {
 	}, nil
 }
 
-// ParseFailOn parses SAFE|CAUTION|DANGER|CRITICAL.
-// Empty string disables fail-on (enabled=false).
+// ParseFailOn parses SAFE|CAUTION|DANGER|CRITICAL for the CLI flag.
+// An empty string disables fail-on (enabled=false).
 func ParseFailOn(s string) (level risk.Level, enabled bool, err error) {
 	s = strings.TrimSpace(s)
 	if s == "" {
@@ -102,7 +102,8 @@ func ParseFailOn(s string) (level risk.Level, enabled bool, err error) {
 	}
 }
 
-// FindingLevel maps policy severity onto risk.Level for --fail-on.
+// FindingLevel maps policy Severity onto risk.Level so --fail-on can
+// consider both change risk and scanner findings on one scale.
 func FindingLevel(sev policy.Severity) risk.Level {
 	switch sev {
 	case policy.SeverityCritical:
@@ -116,7 +117,8 @@ func FindingLevel(sev policy.Severity) risk.Level {
 	}
 }
 
-// ShouldFail is true when max risk or any finding reaches threshold.
+// ShouldFail reports whether CI should exit non-zero.
+// Compares MaxRisk and each finding against threshold when enabled.
 func ShouldFail(rep Report, threshold risk.Level, enabled bool) bool {
 	if !enabled {
 		return false

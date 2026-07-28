@@ -1,8 +1,9 @@
+// Package tfplan parses terraform plan JSON into typed Go values.
 package tfplan
 
 import "encoding/json"
 
-// Action is a single Terraform change collapsed from the actions array.
+// Action is one Terraform change, collapsed from the raw actions array.
 type Action string
 
 const (
@@ -14,7 +15,7 @@ const (
 	ActionReplace Action = "replace"
 )
 
-// Plan is the subset of terraform plan JSON needed for review.
+// Plan is the subset of a terraform plan JSON document we need for review.
 type Plan struct {
 	FormatVersion    string           `json:"format_version"`
 	TerraformVersion string           `json:"terraform_version"`
@@ -23,23 +24,25 @@ type Plan struct {
 
 // ResourceChange is one planned change to a managed resource or data source.
 type ResourceChange struct {
-	Address      string `json:"address"`
-	Mode         string `json:"mode"`
-	Type         string `json:"type"`
+	Address      string `json:"address"` // e.g. aws_db_instance.main
+	Mode         string `json:"mode"`    // "managed" or "data"
+	Type         string `json:"type"`    // e.g. aws_s3_bucket
 	Name         string `json:"name"`
 	ProviderName string `json:"provider_name"`
 	Change       Change `json:"change"`
 }
 
-// Change holds before/after values. RawMessage keeps provider schemas flexible.
+// Change holds before/after values.
+// Before/After stay as RawMessage so later stages decode only what they need.
 type Change struct {
 	Actions []string        `json:"actions"`
 	Before  json.RawMessage `json:"before"`
 	After   json.RawMessage `json:"after"`
 }
 
-// Action collapses Terraform's actions list into one value.
-// Replace is ["delete","create"] or ["create","delete"] (create_before_destroy).
+// Action collapses Terraform's actions list into a single value.
+// A replace is encoded as ["delete","create"] or ["create","delete"].
+// Empty or unrecognized lists return "".
 func (c Change) Action() Action {
 	switch len(c.Actions) {
 	case 1:

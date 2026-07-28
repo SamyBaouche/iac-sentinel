@@ -6,16 +6,17 @@ import (
 	"github.com/SamyBaouche/tfguard/internal/tfplan"
 )
 
-// ScanOptions controls which scanners run.
+// ScanOptions controls which scanners run during Scan.
 type ScanOptions struct {
-	TerraformDir string // HCL tree for Checkov/tfsec; empty skips both
+	// TerraformDir is the HCL tree for Checkov/tfsec. Empty skips both CLIs.
+	TerraformDir string
 	SkipCheckov  bool
 	SkipTfsec    bool
 	SkipOPA      bool
 }
 
-// Scan merges Checkov, tfsec, and OPA into one Result.
-// Missing optional CLIs only produce warnings.
+// Scan merges Checkov, tfsec, and OPA findings into one Result.
+// Optional CLIs that are not installed only add Warnings.
 func Scan(ctx context.Context, plan *tfplan.Plan, opts ScanOptions) (Result, error) {
 	var out Result
 

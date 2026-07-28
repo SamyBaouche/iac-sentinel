@@ -9,6 +9,7 @@ import (
 	"strings"
 )
 
+// Subset of Checkov JSON we care about (top-level or nested under "results").
 type checkovReport struct {
 	FailedChecks []checkovCheck `json:"failed_checks"`
 	Results      *struct {
@@ -25,14 +26,15 @@ type checkovCheck struct {
 	Severity  string `json:"severity"`
 }
 
-// RunCheckov runs the Checkov CLI on dir.
-// If Checkov is not installed, returns a warning and no error.
+// RunCheckov executes Checkov on dir and converts failed checks to Findings.
+// If the binary is missing, returns a Warning and a nil error.
 func RunCheckov(ctx context.Context, dir string) (Result, error) {
 	path, err := exec.LookPath("checkov")
 	if err != nil {
 		return Result{Warnings: []string{"checkov not found on PATH; skipping Checkov scan"}}, nil
 	}
 
+	// Non-zero exit is normal when Checkov finds issues; we still parse stdout.
 	cmd := exec.CommandContext(ctx, path, "-d", dir, "-o", "json", "--quiet", "--compact")
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

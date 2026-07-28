@@ -1,4 +1,4 @@
-// Package render prints scan reports for the terminal.
+// Package render formats an app.Report for the terminal.
 package render
 
 import (
@@ -10,7 +10,7 @@ import (
 	"github.com/SamyBaouche/tfguard/internal/app"
 )
 
-// Terminal writes a plain-text report to w.
+// Terminal writes a plain-text report: summary, per-change risk, findings, warnings.
 func Terminal(w io.Writer, rep app.Report) error {
 	fmt.Fprintf(w, "tfguard scan report\n")
 	fmt.Fprintf(w, "Plan: %s\n", rep.PlanPath)

@@ -8,7 +8,7 @@ import (
 	"os"
 )
 
-// ErrNotAPlan is returned when format_version is missing.
+// ErrNotAPlan is returned when the JSON has no format_version field.
 var ErrNotAPlan = errors.New("tfplan: not a terraform plan (missing format_version)")
 
 // Parse decodes a terraform plan JSON document from r.

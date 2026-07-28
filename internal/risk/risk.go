@@ -1,18 +1,21 @@
-// Package risk classifies how dangerous a Terraform change is.
+// Package risk classifies how dangerous a planned Terraform change is.
+//
+// Used by the CLI before --fail-on decides whether the process should exit 1.
 package risk
 
 import "github.com/SamyBaouche/tfguard/internal/tfplan"
 
-// Level is risk severity from safest to worst.
+// Level is risk severity. Values are ordered so escalate can use level+1.
 type Level int
 
 const (
-	SAFE Level = iota
-	CAUTION
-	DANGER
-	CRITICAL
+	SAFE     Level = iota // create / read / no-op
+	CAUTION               // update
+	DANGER                // replace or delete
+	CRITICAL              // worst case (e.g. delete a stateful resource)
 )
 
+// String returns the display name used in the terminal report.
 func (l Level) String() string {
 	switch l {
 	case SAFE:
@@ -28,8 +31,8 @@ func (l Level) String() string {
 	}
 }
 
-// statefulTypes are AWS resources that hold durable data.
-// Destroying or replacing them can cause irreversible loss, so we escalate risk.
+// statefulTypes lists AWS resource types that hold durable data.
+// Replacing or deleting them can cause irreversible data loss.
 var statefulTypes = map[string]struct{}{
 	"aws_db_instance":                   {},
 	"aws_rds_cluster":                   {},
@@ -48,17 +51,19 @@ var statefulTypes = map[string]struct{}{
 	"aws_neptune_cluster":               {},
 }
 
-// IsStateful reports whether resourceType stores durable data.
+// IsStateful reports whether resourceType is in the stateful table.
 func IsStateful(resourceType string) bool {
 	_, ok := statefulTypes[resourceType]
 	return ok
 }
 
-// Classify maps an action to a Level, then escalates +1 for stateful resources.
+// Classify maps action → base level, then escalates +1 when the resource is stateful.
 //
 //	create / no-op / read → SAFE
 //	update               → CAUTION
 //	replace / delete     → DANGER
+//
+// Example: delete aws_db_instance → DANGER then escalate → CRITICAL.
 func Classify(action tfplan.Action, resourceType string) Level {
 	level := baseLevel(action)
 	if IsStateful(resourceType) {
@@ -78,6 +83,7 @@ func baseLevel(action tfplan.Action) Level {
 	}
 }
 
+// escalate raises severity by one step, never past CRITICAL.
 func escalate(l Level) Level {
 	if l >= CRITICAL {
 		return CRITICAL

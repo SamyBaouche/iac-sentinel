@@ -1,4 +1,9 @@
-// Command tfguard reviews Terraform plans for risk and policy violations.
+// Command tfguard: CLI entrypoint for Terraform plan review.
+//
+// Commands:
+//
+//	scan     parse plan → risk + policies → print report → optional --fail-on
+//	version  print build version
 package main
 
 import (
@@ -12,13 +17,14 @@ import (
 	"github.com/SamyBaouche/tfguard/internal/render"
 )
 
-// Version can be overridden at build time via -ldflags.
+// Version is set at build time with: -ldflags="-X main.Version=..."
 var Version = "0.1.0"
 
 func main() {
 	os.Exit(run(os.Args[1:]))
 }
 
+// run returns a process exit code: 0 ok, 1 fail-on/error, 2 usage.
 func run(args []string) int {
 	if len(args) == 0 {
 		printHelp(os.Stderr)
