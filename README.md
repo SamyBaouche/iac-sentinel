@@ -43,7 +43,145 @@ flowchart LR
 
 ---
 
-## Architecture
+## Project structure
+
+### Directory tree
+
+```mermaid
+flowchart TB
+  ROOT[iac-sentinel]
+
+  ROOT --> GOMOD[go.mod / go.sum]
+  ROOT --> MAKE[Makefile]
+  ROOT --> README[README.md]
+  ROOT --> POLDIR[policies/]
+  ROOT --> INTERNAL[internal/]
+  ROOT --> TESTDATA[testdata/]
+
+  POLDIR --> P1[s3_public.rego]
+  POLDIR --> P2[sg_open.rego]
+  POLDIR --> P3[rds_encryption.rego]
+  POLDIR --> P4[iam_wildcard.rego]
+  POLDIR --> P5[ebs_encryption.rego]
+  POLDIR --> PEMB[embed.go]
+
+  INTERNAL --> TF[tfplan/]
+  INTERNAL --> RK[risk/]
+  INTERNAL --> PY[policy/]
+
+  TF --> TF1[types.go]
+  TF --> TF2[parse.go]
+  TF --> TF3[summary.go]
+  TF --> TF4[tfplan_test.go]
+
+  RK --> RK1[risk.go]
+  RK --> RK2[risk_test.go]
+
+  PY --> PY1[finding.go]
+  PY --> PY2[checkov.go]
+  PY --> PY3[tfsec.go]
+  PY --> PY4[opa.go]
+  PY --> PY5[scan.go]
+  PY --> PY6[policy_test.go]
+
+  TESTDATA --> T1[plan_*.json]
+  TESTDATA --> T2[checkov_failed.json]
+  TESTDATA --> T3[tfsec_failed.json]
+
+  style ROOT fill:#0f172a,stroke:#38bdf8,color:#fff
+  style INTERNAL fill:#1e293b,stroke:#94a3b8,color:#fff
+  style POLDIR fill:#1e293b,stroke:#94a3b8,color:#fff
+  style TESTDATA fill:#1e293b,stroke:#94a3b8,color:#fff
+```
+
+### Package responsibilities
+
+```mermaid
+flowchart LR
+  subgraph packages [Go packages]
+    TFPLAN[internal/tfplan<br/>parse plan JSON]
+    RISK[internal/risk<br/>score danger]
+    POLICY[internal/policy<br/>security findings]
+    POLICIES[policies<br/>Rego rules + embed]
+  end
+
+  TFPLAN -->|Action + Plan| RISK
+  TFPLAN -->|PlanInput| POLICY
+  POLICIES -->|embedded .rego| POLICY
+
+  style TFPLAN fill:#14532d,stroke:#22c55e,color:#fff
+  style RISK fill:#1e3a8a,stroke:#60a5fa,color:#fff
+  style POLICY fill:#713f12,stroke:#f59e0b,color:#fff
+  style POLICIES fill:#4c1d95,stroke:#a78bfa,color:#fff
+```
+
+### Dependency graph
+
+```mermaid
+flowchart TB
+  CLI["cmd/ CLI - planned"]
+  RISK[internal/risk]
+  POLICY[internal/policy]
+  TFPLAN[internal/tfplan]
+  POLICIES[policies]
+  OPA[OPA Go SDK]
+  EXT[Checkov / tfsec CLIs]
+
+  CLI -.->|future| RISK
+  CLI -.->|future| POLICY
+  CLI -.->|future| TFPLAN
+
+  RISK --> TFPLAN
+  POLICY --> TFPLAN
+  POLICY --> POLICIES
+  POLICY --> OPA
+  POLICY -.->|os/exec optional| EXT
+
+  style CLI fill:#334155,stroke:#64748b,color:#fff,stroke-dasharray: 5 5
+```
+
+### Text layout
+
+```text
+iac-sentinel/
+├── go.mod / go.sum
+├── Makefile
+├── README.md
+├── policies/                 OPA Rego rules (embedded in the binary)
+│   ├── embed.go
+│   ├── s3_public.rego
+│   ├── sg_open.rego
+│   ├── rds_encryption.rego
+│   ├── iam_wildcard.rego
+│   └── ebs_encryption.rego
+├── internal/
+│   ├── tfplan/               1. parse plan JSON
+│   │   ├── types.go
+│   │   ├── parse.go
+│   │   ├── summary.go
+│   │   └── tfplan_test.go
+│   ├── risk/                 2. SAFE → CRITICAL
+│   │   ├── risk.go
+│   │   └── risk_test.go
+│   └── policy/               3. Finding + scanners
+│       ├── finding.go
+│       ├── checkov.go
+│       ├── tfsec.go
+│       ├── opa.go
+│       ├── scan.go
+│       └── policy_test.go
+└── testdata/                 fixtures for unit tests
+    ├── plan_minimal.json
+    ├── plan_mixed.json
+    ├── plan_replace.json
+    ├── plan_not_a_plan.json
+    ├── checkov_failed.json
+    └── tfsec_failed.json
+```
+
+---
+
+## System architecture
 
 ```mermaid
 flowchart TB
@@ -88,7 +226,7 @@ flowchart TB
   CLI --> PR
 ```
 
-### Request flow
+### End-to-end sequence
 
 ```mermaid
 sequenceDiagram
@@ -109,37 +247,16 @@ sequenceDiagram
 
 ---
 
-## Repository layout
+## Module details
 
-```text
-iac-sentinel/
-├── go.mod / go.sum
-├── Makefile
-├── README.md
-├── policies/                 # OPA Rego rules (embedded in the binary)
-│   ├── s3_public.rego
-│   ├── sg_open.rego
-│   ├── rds_encryption.rego
-│   ├── iam_wildcard.rego
-│   └── ebs_encryption.rego
-├── internal/
-│   ├── tfplan/               # plan JSON parsing and summary
-│   ├── risk/                 # SAFE → CRITICAL classification
-│   └── policy/               # Finding + Checkov / tfsec / OPA
-└── testdata/                 # fixtures for unit tests
-```
+### `internal/tfplan` — understand the plan
 
----
-
-## What works today
-
-### `internal/tfplan`
-
-| Piece | Responsibility |
-|-------|----------------|
+| File | Responsibility |
+|------|----------------|
 | `types.go` | `Plan`, `ResourceChange`, `Change`, `Action`; collapses replace encoded as `["delete","create"]` |
 | `parse.go` | `Parse` / `ParseFile`; returns `ErrNotAPlan` when `format_version` is missing |
 | `summary.go` | Counts create/update/replace/delete; excludes no-ops and data sources |
+| `tfplan_test.go` | Fixture-based unit tests |
 
 ```mermaid
 flowchart LR
@@ -150,13 +267,48 @@ flowchart LR
   S --> OUT[Creates Updates Replaces Deletes]
 ```
 
-### `internal/risk`
+```mermaid
+classDiagram
+  class Plan {
+    FormatVersion string
+    TerraformVersion string
+    ResourceChanges ResourceChange
+  }
+  class ResourceChange {
+    Address string
+    Mode string
+    Type string
+    Name string
+    Change Change
+  }
+  class Change {
+    Actions string
+    Before RawMessage
+    After RawMessage
+    Action() Action
+  }
+  class Action {
+    <<enumeration>>
+    no-op
+    create
+    read
+    update
+    delete
+    replace
+  }
+  Plan "1" --> "*" ResourceChange
+  ResourceChange "1" --> "1" Change
+  Change --> Action
+```
 
-| Piece | Responsibility |
-|-------|----------------|
-| `Level` | `SAFE` → `CAUTION` → `DANGER` → `CRITICAL` (`iota`), plus `String()` |
-| Stateful table | AWS types that hold durable data (RDS, S3, EBS, DynamoDB, …) |
-| `Classify(action, resourceType)` | Base level from action; escalate +1 when stateful (capped at `CRITICAL`) |
+---
+
+### `internal/risk` — how dangerous is it?
+
+| File | Responsibility |
+|------|----------------|
+| `risk.go` | `Level`, stateful table, `Classify`, `String` |
+| `risk_test.go` | Covers base levels and stateful escalation |
 
 ```mermaid
 flowchart TD
@@ -172,6 +324,18 @@ flowchart TD
   G --> F
 ```
 
+```mermaid
+stateDiagram-v2
+  [*] --> SAFE: create / no-op / read
+  [*] --> CAUTION: update
+  [*] --> DANGER: replace / delete
+
+  SAFE --> CAUTION: stateful +1
+  CAUTION --> DANGER: stateful +1
+  DANGER --> CRITICAL: stateful +1
+  CRITICAL --> CRITICAL: already max
+```
+
 **Base mapping (non-stateful)**
 
 | Action | Level |
@@ -182,23 +346,44 @@ flowchart TD
 
 **Examples with escalation:** create S3 → `CAUTION`; update RDS → `DANGER`; delete RDS → `CRITICAL`.
 
-### `internal/policy`
+---
 
-| Piece | Responsibility |
-|-------|----------------|
-| `Finding` | Unified issue shape shared by every scanner |
-| `RunCheckov` / `RunTfsec` | Optional CLI wrappers (`os/exec` + JSON); warn if binary missing |
-| `EvaluateOPA` | Embedded Rego policies via the OPA Go SDK |
-| `Scan` | Merges Checkov + tfsec + OPA into one `Result` |
+### `internal/policy` — security findings
+
+| File | Responsibility |
+|------|----------------|
+| `finding.go` | Unified `Finding` + `Result` |
+| `checkov.go` | Checkov CLI wrapper (`os/exec` + JSON) |
+| `tfsec.go` | tfsec CLI wrapper |
+| `opa.go` | OPA SDK evaluation + `PlanInput` |
+| `scan.go` | Merge all scanners |
+| `policy_test.go` | JSON fixtures + OPA cases + missing-binary warnings |
 
 ```mermaid
 flowchart TB
   CKV[Checkov optional] --> F[Finding]
   TFS[tfsec optional] --> F
   OPA[OPA Rego] --> F
-  F --> R["Result Findings + Warnings"]
+  F --> R[Result Findings + Warnings]
   CKV -.->|missing binary| W[Warning only]
   TFS -.->|missing binary| W
+```
+
+```mermaid
+flowchart LR
+  subgraph rego [policies/*.rego]
+    S3[SENTINEL-S3-001]
+    SG[SENTINEL-SG-001]
+    RDS[SENTINEL-RDS-001]
+    IAM[SENTINEL-IAM-001]
+    EBS[SENTINEL-EBS-001]
+  end
+
+  EMBED[embed.go] --> FS[embedded FS]
+  FS --> OPA[EvaluateOPA]
+  rego --> EMBED
+  PLAN[PlanInput from tfplan] --> OPA
+  OPA --> FINDINGS[Finding list]
 ```
 
 **Built-in OPA policies**
