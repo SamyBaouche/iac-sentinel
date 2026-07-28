@@ -4,12 +4,26 @@ package app
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/SamyBaouche/tfguard/internal/policy"
 	"github.com/SamyBaouche/tfguard/internal/risk"
 	"github.com/SamyBaouche/tfguard/internal/tfplan"
 )
+
+// Progress receives scan phase updates for animated CLI feedback.
+type Progress interface {
+	Start(message string)
+	Done(detail string)
+	Fail(detail string)
+}
+
+type nopProgress struct{}
+
+func (nopProgress) Start(string) {}
+func (nopProgress) Done(string)  {}
+func (nopProgress) Fail(string)  {}
 
 // ChangeRisk is one mutating change with its classified risk level.
 type ChangeRisk struct {
@@ -35,15 +49,25 @@ type Options struct {
 	SkipCheckov  bool
 	SkipTfsec    bool
 	SkipOPA      bool
+	Progress     Progress // optional; animated CLI steps when set
 }
 
 // Run parses the plan, classifies each change, and runs policy scanners.
 func Run(ctx context.Context, opts Options) (Report, error) {
-	plan, err := tfplan.ParseFile(opts.PlanPath)
-	if err != nil {
-		return Report{}, err
+	prog := opts.Progress
+	if prog == nil {
+		prog = nopProgress{}
 	}
 
+	prog.Start("Parsing terraform plan")
+	plan, err := tfplan.ParseFile(opts.PlanPath)
+	if err != nil {
+		prog.Fail("")
+		return Report{}, err
+	}
+	prog.Done(filepath.Base(opts.PlanPath))
+
+	prog.Start("Classifying change risk")
 	summary := tfplan.Summarize(plan)
 	changes := make([]ChangeRisk, 0, len(summary.Changes))
 	maxRisk := risk.SAFE
@@ -61,7 +85,9 @@ func Run(ctx context.Context, opts Options) (Report, error) {
 			maxRisk = level
 		}
 	}
+	prog.Done(fmt.Sprintf("%d changes · max %s", len(changes), maxRisk.String()))
 
+	prog.Start("Running policy scanners")
 	pol, err := policy.Scan(ctx, plan, policy.ScanOptions{
 		TerraformDir: opts.TerraformDir,
 		SkipCheckov:  opts.SkipCheckov,
@@ -69,8 +95,10 @@ func Run(ctx context.Context, opts Options) (Report, error) {
 		SkipOPA:      opts.SkipOPA,
 	})
 	if err != nil {
+		prog.Fail("")
 		return Report{}, err
 	}
+	prog.Done(fmt.Sprintf("%d findings", len(pol.Findings)))
 
 	return Report{
 		PlanPath: opts.PlanPath,

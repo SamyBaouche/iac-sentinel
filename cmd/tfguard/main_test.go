@@ -39,7 +39,7 @@ func TestScanFailOn(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("exit = %d, want 1; stderr=%q stdout=%q", code, errBuf.String(), out.String())
 	}
-	if !strings.Contains(out.String(), "Max risk:") {
+	if !strings.Contains(out.String(), "Scan report") {
 		t.Fatalf("expected report on stdout, got %q", out.String())
 	}
 }

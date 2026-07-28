@@ -36,7 +36,15 @@ func newRootCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "tfguard",
 		Short: "Terraform plan risk and policy reviewer",
-		Long:  "tfguard parses terraform plan JSON, scores change risk, and evaluates security policies.",
+		Long: `tfguard parses terraform plan JSON, scores change risk,
+and evaluates security policies (OPA, Checkov, tfsec).
+
+Commands:
+  scan      Analyze a plan and print a risk / policy report
+  version   Print the build version`,
+		Example: `  tfguard scan --plan plan.json
+  tfguard scan --plan plan.json --fail-on DANGER
+  tfguard version`,
 		// Running with no subcommand shows help and returns an error we map to exit 2.
 		RunE: func(cmd *cobra.Command, args []string) error {
 			_ = cmd.Help()
@@ -46,10 +54,39 @@ func newRootCmd() *cobra.Command {
 		SilenceErrors: true,
 	}
 
+	cmd.SetHelpTemplate(rootHelpTemplate)
 	cmd.AddCommand(newScanCmd())
 	cmd.AddCommand(newVersionCmd())
 	return cmd
 }
+
+// rootHelpTemplate is a clearer, sectioned help layout.
+const rootHelpTemplate = `{{with (or .Long .Short)}}{{. | trimTrailingWhitespaces}}
+
+{{end}}Usage:{{if .Runnable}}
+  {{.UseLine}}{{end}}{{if .HasAvailableSubCommands}}
+  {{.CommandPath}} [command]{{end}}{{if gt (len .Aliases) 0}}
+
+Aliases:
+  {{.NameAndAliases}}{{end}}{{if .HasExample}}
+
+Examples:
+{{.Example}}{{end}}{{if .HasAvailableSubCommands}}
+
+Available Commands:{{range .Commands}}{{if (or .IsAvailableCommand (eq .Name "help"))}}
+  {{rpad .Name .NamePadding }} {{.Short}}{{end}}{{end}}{{end}}{{if .HasAvailableLocalFlags}}
+
+Flags:
+{{.LocalFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}{{if .HasAvailableInheritedFlags}}
+
+Global Flags:
+{{.InheritedFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}{{if .HasHelpSubCommands}}
+
+Additional help topics:{{range .Commands}}{{if .IsAdditionalHelpTopicCommand}}
+  {{rpad .CommandPath .CommandPathPadding}} {{.Short}}{{end}}{{end}}{{end}}{{if .HasAvailableSubCommands}}
+
+Use "{{.CommandPath}} [command] --help" for more information about a command.{{end}}
+`
 
 // execute runs the CLI with args (without the program name) and returns an exit code.
 func execute(args []string) int {

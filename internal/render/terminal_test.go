@@ -38,7 +38,7 @@ func TestTerminal(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := buf.String()
-	for _, want := range []string{"Max risk:", "CRITICAL", "TFGUARD-RDS-001"} {
+	for _, want := range []string{"Scan report", "CRITICAL", "TFGUARD-RDS-001", "highest"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("missing %q\n%s", want, out)
 		}

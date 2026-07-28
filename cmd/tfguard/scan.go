@@ -6,6 +6,7 @@ import (
 
 	"github.com/SamyBaouche/tfguard/internal/app"
 	"github.com/SamyBaouche/tfguard/internal/render"
+	"github.com/SamyBaouche/tfguard/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -17,6 +18,7 @@ type scanFlags struct {
 	skipCheckov bool
 	skipTfsec   bool
 	skipOPA     bool
+	noBanner    bool
 }
 
 func newScanCmd() *cobra.Command {
@@ -28,7 +30,9 @@ func newScanCmd() *cobra.Command {
 		Long: `Parse a terraform plan JSON, classify risk for each change,
 run policy scanners (OPA + optional Checkov/tfsec), and print a report.
 
-Use --fail-on to exit 1 when risk or findings reach a threshold (CI gate).`,
+Use --fail-on to exit 1 when risk or findings reach a threshold (CI gate).
+
+Progress steps animate in a TTY; set NO_COLOR=1 for plain output.`,
 		Example: `  tfguard scan --plan plan.json
   tfguard scan --plan plan.json --dir ./infra --fail-on CRITICAL
   tfguard scan --plan plan.json --skip-checkov --skip-tfsec`,
@@ -44,6 +48,7 @@ Use --fail-on to exit 1 when risk or findings reach a threshold (CI gate).`,
 	cmd.Flags().BoolVar(&f.skipCheckov, "skip-checkov", false, "do not run Checkov")
 	cmd.Flags().BoolVar(&f.skipTfsec, "skip-tfsec", false, "do not run tfsec")
 	cmd.Flags().BoolVar(&f.skipOPA, "skip-opa", false, "do not run OPA policies")
+	cmd.Flags().BoolVar(&f.noBanner, "no-banner", false, "skip the animated banner")
 
 	_ = cmd.MarkFlagRequired("plan")
 	return cmd
@@ -55,18 +60,29 @@ func runScan(cmd *cobra.Command, f *scanFlags) error {
 		return &exitError{code: 2, msg: err.Error()}
 	}
 
+	out := cmd.OutOrStdout()
+	errW := cmd.ErrOrStderr()
+	style := ui.NewStyle(errW)
+
+	if !f.noBanner {
+		ui.Banner(errW, style, Version)
+	}
+
+	spin := ui.NewSpinner(errW, style)
+
 	rep, err := app.Run(context.Background(), app.Options{
 		PlanPath:     f.plan,
 		TerraformDir: f.dir,
 		SkipCheckov:  f.skipCheckov,
 		SkipTfsec:    f.skipTfsec,
 		SkipOPA:      f.skipOPA,
+		Progress:     spin,
 	})
 	if err != nil {
 		return &exitError{code: 1, msg: err.Error()}
 	}
 
-	if err := render.Terminal(cmd.OutOrStdout(), rep); err != nil {
+	if err := render.Terminal(out, rep); err != nil {
 		return &exitError{code: 1, msg: fmt.Sprintf("render: %v", err)}
 	}
 
