@@ -1,4 +1,4 @@
-// Package render prints scan reports to the terminal.
+// Package render prints scan reports for the terminal.
 package render
 
 import (
@@ -7,14 +7,12 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/SamyBaouche/iac-sentinel/internal/app"
+	"github.com/SamyBaouche/tfguard/internal/app"
 )
 
-// Terminal writes a human-readable report to w.
+// Terminal writes a plain-text report to w.
 func Terminal(w io.Writer, rep app.Report) error {
-	if _, err := fmt.Fprintf(w, "IaC Sentinel — scan report\n"); err != nil {
-		return err
-	}
+	fmt.Fprintf(w, "tfguard scan report\n")
 	fmt.Fprintf(w, "Plan: %s\n", rep.PlanPath)
 	fmt.Fprintf(w, "Max risk: %s\n\n", rep.MaxRisk.String())
 
@@ -65,6 +63,5 @@ func Terminal(w io.Writer, rep app.Report) error {
 		}
 		fmt.Fprintln(w)
 	}
-
 	return nil
 }

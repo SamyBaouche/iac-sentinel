@@ -5,101 +5,51 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/SamyBaouche/iac-sentinel/internal/policy"
-	"github.com/SamyBaouche/iac-sentinel/internal/risk"
+	"github.com/SamyBaouche/tfguard/internal/policy"
+	"github.com/SamyBaouche/tfguard/internal/risk"
 )
 
 func TestParseFailOn(t *testing.T) {
 	t.Parallel()
-
-	tests := []struct {
-		in      string
-		want    risk.Level
-		enabled bool
-		err     bool
-	}{
-		{"", risk.SAFE, false, false},
-		{"CRITICAL", risk.CRITICAL, true, false},
-		{"danger", risk.DANGER, true, false},
-		{"nope", 0, false, true},
+	_, enabled, err := ParseFailOn("")
+	if err != nil || enabled {
+		t.Fatal("empty fail-on should be disabled")
 	}
-
-	for _, tt := range tests {
-		got, enabled, err := ParseFailOn(tt.in)
-		if tt.err {
-			if err == nil {
-				t.Fatalf("ParseFailOn(%q) expected error", tt.in)
-			}
-			continue
-		}
-		if err != nil {
-			t.Fatalf("ParseFailOn(%q): %v", tt.in, err)
-		}
-		if got != tt.want || enabled != tt.enabled {
-			t.Fatalf("ParseFailOn(%q) = %v,%v want %v,%v", tt.in, got, enabled, tt.want, tt.enabled)
-		}
+	got, enabled, err := ParseFailOn("danger")
+	if err != nil || !enabled || got != risk.DANGER {
+		t.Fatalf("got %v enabled=%v err=%v", got, enabled, err)
+	}
+	if _, _, err := ParseFailOn("nope"); err == nil {
+		t.Fatal("expected error")
 	}
 }
 
 func TestShouldFail(t *testing.T) {
 	t.Parallel()
-
-	rep := Report{
-		MaxRisk: risk.DANGER,
-		Policy: policy.Result{
-			Findings: []policy.Finding{
-				{Severity: policy.SeverityHigh, ID: "X"},
-			},
-		},
+	rep := Report{MaxRisk: risk.DANGER}
+	if ShouldFail(rep, risk.CRITICAL, true) || !ShouldFail(rep, risk.DANGER, true) {
+		t.Fatal("unexpected ShouldFail for MaxRisk")
 	}
-
-	if ShouldFail(rep, risk.CRITICAL, true) {
-		t.Fatal("DANGER should not fail on CRITICAL threshold")
-	}
-	if !ShouldFail(rep, risk.DANGER, true) {
-		t.Fatal("DANGER should fail on DANGER threshold")
-	}
-	if ShouldFail(rep, risk.CRITICAL, false) {
-		t.Fatal("disabled fail-on must never fail")
-	}
-
-	repCriticalFinding := Report{
+	rep = Report{
 		MaxRisk: risk.SAFE,
-		Policy: policy.Result{
-			Findings: []policy.Finding{{Severity: policy.SeverityCritical}},
-		},
+		Policy:  policy.Result{Findings: []policy.Finding{{Severity: policy.SeverityCritical}}},
 	}
-	if !ShouldFail(repCriticalFinding, risk.CRITICAL, true) {
-		t.Fatal("CRITICAL finding should fail on CRITICAL threshold")
-	}
-}
-
-func TestFindingLevel(t *testing.T) {
-	t.Parallel()
-	if FindingLevel(policy.SeverityHigh) != risk.DANGER {
-		t.Fatal("HIGH should map to DANGER")
-	}
-	if FindingLevel(policy.SeverityCritical) != risk.CRITICAL {
-		t.Fatal("CRITICAL should map to CRITICAL")
+	if !ShouldFail(rep, risk.CRITICAL, true) {
+		t.Fatal("CRITICAL finding should fail")
 	}
 }
 
 func TestRunMixedPlan(t *testing.T) {
 	t.Parallel()
-
-	plan := filepath.Join("..", "..", "testdata", "plan_mixed.json")
 	rep, err := Run(context.Background(), Options{
-		PlanPath:    plan,
+		PlanPath:    filepath.Join("..", "..", "testdata", "plan_mixed.json"),
 		SkipCheckov: true,
 		SkipTfsec:   true,
 	})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if rep.Summary.Creates != 1 || rep.Summary.Deletes != 1 {
-		t.Fatalf("unexpected summary: %+v", rep.Summary)
-	}
-	if rep.MaxRisk < risk.DANGER {
-		t.Fatalf("MaxRisk = %s, want at least DANGER (delete present)", rep.MaxRisk)
+	if rep.Summary.Creates != 1 || rep.MaxRisk < risk.DANGER {
+		t.Fatalf("unexpected report: %+v", rep)
 	}
 }

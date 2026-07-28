@@ -1,4 +1,4 @@
-// Command iac-sentinel: CLI entrypoint for scanning Terraform plans.
+// Command tfguard reviews Terraform plans for risk and policy violations.
 package main
 
 import (
@@ -8,11 +8,11 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/SamyBaouche/iac-sentinel/internal/app"
-	"github.com/SamyBaouche/iac-sentinel/internal/render"
+	"github.com/SamyBaouche/tfguard/internal/app"
+	"github.com/SamyBaouche/tfguard/internal/render"
 )
 
-// Version is overridden at build time with -ldflags when releasing.
+// Version can be overridden at build time via -ldflags.
 var Version = "0.1.0"
 
 func main() {
@@ -21,41 +21,40 @@ func main() {
 
 func run(args []string) int {
 	if len(args) == 0 {
-		printRootHelp(os.Stderr)
+		printHelp(os.Stderr)
 		return 2
 	}
 
 	switch args[0] {
 	case "version":
-		fmt.Printf("iac-sentinel %s\n", Version)
+		fmt.Printf("tfguard %s\n", Version)
 		return 0
 	case "scan":
 		return cmdScan(args[1:])
 	case "help", "-h", "--help":
-		printRootHelp(os.Stdout)
+		printHelp(os.Stdout)
 		return 0
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command %q\n\n", args[0])
-		printRootHelp(os.Stderr)
+		printHelp(os.Stderr)
 		return 2
 	}
 }
 
-func printRootHelp(w *os.File) {
-	fmt.Fprintf(w, `IaC Sentinel — automated Terraform plan reviewer
+func printHelp(w *os.File) {
+	fmt.Fprintf(w, `tfguard — Terraform plan risk and policy reviewer
 
 Usage:
-  iac-sentinel <command> [flags]
+  tfguard <command> [flags]
 
 Commands:
   scan      Analyze a terraform plan JSON file
-  version   Print the version
+  version   Print version
   help      Show this help
 
 Examples:
-  iac-sentinel scan -plan plan.json
-  iac-sentinel scan -plan plan.json -dir ./infra --fail-on CRITICAL
-  iac-sentinel version
+  tfguard scan -plan plan.json
+  tfguard scan -plan plan.json -dir ./infra -fail-on CRITICAL
 `)
 }
 
@@ -64,11 +63,11 @@ func cmdScan(args []string) int {
 	fs.SetOutput(os.Stderr)
 
 	planPath := fs.String("plan", "", "path to terraform plan JSON (required)")
-	tfDir := fs.String("dir", "", "Terraform source directory for Checkov/tfsec (optional)")
-	failOn := fs.String("fail-on", "", "exit 1 if risk/finding reaches this level: SAFE|CAUTION|DANGER|CRITICAL")
-	skipCheckov := fs.Bool("skip-checkov", false, "do not run Checkov")
-	skipTfsec := fs.Bool("skip-tfsec", false, "do not run tfsec")
-	skipOPA := fs.Bool("skip-opa", false, "do not run OPA policies")
+	tfDir := fs.String("dir", "", "Terraform source dir for Checkov/tfsec (optional)")
+	failOn := fs.String("fail-on", "", "exit 1 at this level: SAFE|CAUTION|DANGER|CRITICAL")
+	skipCheckov := fs.Bool("skip-checkov", false, "skip Checkov")
+	skipTfsec := fs.Bool("skip-tfsec", false, "skip tfsec")
+	skipOPA := fs.Bool("skip-opa", false, "skip OPA policies")
 
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {

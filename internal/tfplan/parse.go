@@ -8,14 +8,13 @@ import (
 	"os"
 )
 
-// ErrNotAPlan is returned when the JSON document has no format_version field.
+// ErrNotAPlan is returned when format_version is missing.
 var ErrNotAPlan = errors.New("tfplan: not a terraform plan (missing format_version)")
 
 // Parse decodes a terraform plan JSON document from r.
 func Parse(r io.Reader) (*Plan, error) {
 	var plan Plan
-	dec := json.NewDecoder(r)
-	if err := dec.Decode(&plan); err != nil {
+	if err := json.NewDecoder(r).Decode(&plan); err != nil {
 		return nil, fmt.Errorf("tfplan: decode: %w", err)
 	}
 	if plan.FormatVersion == "" {

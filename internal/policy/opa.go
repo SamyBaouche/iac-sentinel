@@ -6,15 +6,12 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/SamyBaouche/iac-sentinel/internal/tfplan"
-	"github.com/SamyBaouche/iac-sentinel/policies"
+	"github.com/SamyBaouche/tfguard/internal/tfplan"
+	"github.com/SamyBaouche/tfguard/policies"
 	"github.com/open-policy-agent/opa/v1/rego"
 )
 
-// EvaluateOPA runs the embedded Rego policies against input.
-//
-// input is usually the map produced by PlanInput (resource_changes, …).
-// OPA evaluates every package under data.sentinel.*.violation.
+// EvaluateOPA evaluates embedded Rego policies against input (usually PlanInput).
 func EvaluateOPA(ctx context.Context, input any) (Result, error) {
 	modules, err := loadEmbeddedModules()
 	if err != nil {
@@ -22,7 +19,7 @@ func EvaluateOPA(ctx context.Context, input any) (Result, error) {
 	}
 
 	opts := []func(*rego.Rego){
-		rego.Query("data.sentinel[pkg].violation[v]"),
+		rego.Query("data.tfguard[pkg].violation[v]"),
 		rego.Input(input),
 	}
 	opts = append(opts, modules...)
@@ -34,7 +31,6 @@ func EvaluateOPA(ctx context.Context, input any) (Result, error) {
 
 	var findings []Finding
 	for _, result := range rs {
-		// Query "data.sentinel[pkg].violation[v]" binds each hit to "v".
 		raw, ok := result.Bindings["v"]
 		if !ok {
 			continue
@@ -45,11 +41,9 @@ func EvaluateOPA(ctx context.Context, input any) (Result, error) {
 		}
 		findings = append(findings, f)
 	}
-
 	if len(findings) == 0 {
 		findings = findingsFromExpressions(rs)
 	}
-
 	return Result{Findings: findings}, nil
 }
 
@@ -68,8 +62,7 @@ func loadEmbeddedModules() ([]func(*rego.Rego), error) {
 		if err != nil {
 			return nil, fmt.Errorf("policy: read %s: %w", e.Name(), err)
 		}
-		name := e.Name()
-		mods = append(mods, rego.Module(name, string(body)))
+		mods = append(mods, rego.Module(e.Name(), string(body)))
 	}
 	if len(mods) == 0 {
 		return nil, fmt.Errorf("policy: no .rego modules embedded")
@@ -118,8 +111,7 @@ func asString(v any) string {
 	return s
 }
 
-// PlanInput converts a parsed Terraform plan into a generic map for OPA.
-// json.RawMessage fields (before/after) become real JSON values.
+// PlanInput converts a Plan into a generic map suitable for OPA input.
 func PlanInput(p *tfplan.Plan) (map[string]any, error) {
 	if p == nil {
 		return map[string]any{"resource_changes": []any{}}, nil

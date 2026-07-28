@@ -9,7 +9,6 @@ import (
 	"strings"
 )
 
-// tfsecReport is the subset of tfsec (and aquasec/tfsec) JSON we need.
 type tfsecReport struct {
 	Results []tfsecResult `json:"results"`
 }
@@ -22,23 +21,18 @@ type tfsecResult struct {
 	Resource    string `json:"resource"`
 	Link        string `json:"link"`
 	Location    struct {
-		Filename  string `json:"filename"`
-		StartLine int    `json:"start_line"`
+		Filename string `json:"filename"`
 	} `json:"location"`
 }
 
-// RunTfsec executes the tfsec CLI on dir and converts results into Findings.
-// Same soft-fail rule as Checkov: missing binary → Warning, no crash.
+// RunTfsec runs the tfsec CLI on dir.
+// If tfsec is not installed, returns a warning and no error.
 func RunTfsec(ctx context.Context, dir string) (Result, error) {
 	path, err := exec.LookPath("tfsec")
 	if err != nil {
-		return Result{
-			Warnings: []string{"tfsec not found on PATH; skipping tfsec scan"},
-		}, nil
+		return Result{Warnings: []string{"tfsec not found on PATH; skipping tfsec scan"}}, nil
 	}
 
-	// tfsec <dir> --format json
-	// Non-zero exit when issues are found is expected.
 	cmd := exec.CommandContext(ctx, path, dir, "--format", "json")
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

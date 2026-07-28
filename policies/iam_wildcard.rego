@@ -1,5 +1,5 @@
 # Deny IAM policy documents that allow Action = "*".
-package sentinel.iam_wildcard
+package tfguard.iam_wildcard
 
 import rego.v1
 
@@ -12,7 +12,7 @@ violation contains finding if {
 	has_wildcard_action(doc)
 
 	finding := {
-		"id": "SENTINEL-IAM-001",
+		"id": "TFGUARD-IAM-001",
 		"severity": "CRITICAL",
 		"title": "IAM policy allows Action wildcard *",
 		"description": sprintf("%s grants Action=\"*\" which is overly permissive", [rc.address]),

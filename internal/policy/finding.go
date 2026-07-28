@@ -1,16 +1,8 @@
-// Package policy runs security checks on Terraform code / plans and returns
-// a single shared format: Finding.
-//
-// Three sources feed into Finding:
-//  1. Checkov  — external CLI scanner (optional)
-//  2. tfsec    — external CLI scanner (optional)
-//  3. OPA      — policies written in Rego, evaluated in-process
-//
-// If Checkov or tfsec is not installed, we WARN and continue.
-// We never crash only because an optional scanner is missing.
+// Package policy runs security checks and returns a unified Finding list.
+// Sources: optional Checkov/tfsec CLIs, and embedded OPA Rego policies.
 package policy
 
-// Severity is how serious a finding is (shared across all scanners).
+// Severity is how serious a finding is.
 type Severity string
 
 const (
@@ -21,7 +13,7 @@ const (
 	SeverityUnknown  Severity = "UNKNOWN"
 )
 
-// Source says which tool produced the finding.
+// Source identifies which scanner produced a finding.
 type Source string
 
 const (
@@ -30,22 +22,20 @@ const (
 	SourceOPA     Source = "opa"
 )
 
-// Finding is the UNIFIED shape for every security issue we report.
-// Checkov, tfsec, and OPA all get converted into this struct so the rest
-// of the app (CLI, PR comments, --fail-on) only speaks one language.
+// Finding is the shared shape for every scanner result.
 type Finding struct {
-	ID          string   // e.g. "CKV_AWS_20", "AVD-AWS-0086", "SENTINEL-S3-001"
-	Source      Source   // checkov | tfsec | opa
-	Severity    Severity // CRITICAL / HIGH / MEDIUM / LOW
-	Title       string   // short human label
-	Description string   // longer explanation
-	Resource    string   // e.g. "aws_s3_bucket.logs"
-	File        string   // path in the Terraform tree, if known
-	Guideline   string   // link or hint on how to fix
+	ID          string
+	Source      Source
+	Severity    Severity
+	Title       string
+	Description string
+	Resource    string
+	File        string
+	Guideline   string
 }
 
-// Result is what a scanner returns: findings + soft warnings.
+// Result is findings plus soft warnings (e.g. missing optional CLI).
 type Result struct {
 	Findings []Finding
-	Warnings []string // e.g. "checkov not found on PATH; skipping"
+	Warnings []string
 }

@@ -2,18 +2,17 @@ package tfplan
 
 import "slices"
 
-// Summary aggregates non-noop, non-data resource changes from a plan.
+// Summary counts mutating changes and lists them sorted by address.
 type Summary struct {
 	Creates  int
 	Updates  int
 	Replaces int
 	Deletes  int
-	Changes  []ResourceChange // sorted by Address
+	Changes  []ResourceChange
 }
 
-// Summarize counts create/update/replace/delete changes and returns them
-// sorted by address. No-ops, reads, and data sources are excluded.
-// A nil plan yields a zero Summary.
+// Summarize counts create/update/replace/delete.
+// No-ops, reads, and data sources are excluded. A nil plan yields zero.
 func Summarize(p *Plan) Summary {
 	if p == nil {
 		return Summary{}
@@ -50,6 +49,5 @@ func Summarize(p *Plan) Summary {
 			return 0
 		}
 	})
-
 	return s
 }

@@ -1,5 +1,5 @@
 # Require EBS volumes to be encrypted.
-package sentinel.ebs_encryption
+package tfguard.ebs_encryption
 
 import rego.v1
 
@@ -11,7 +11,7 @@ violation contains finding if {
 	not object.get(after, "encrypted", false)
 
 	finding := {
-		"id": "SENTINEL-EBS-001",
+		"id": "TFGUARD-EBS-001",
 		"severity": "HIGH",
 		"title": "EBS volume is not encrypted",
 		"description": sprintf("%s should set encrypted = true", [rc.address]),

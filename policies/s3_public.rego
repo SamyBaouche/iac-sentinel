@@ -1,5 +1,5 @@
 # Deny S3 buckets configured with a public ACL.
-package sentinel.s3_public
+package tfguard.s3_public
 
 import rego.v1
 
@@ -12,7 +12,7 @@ violation contains finding if {
 	acl in {"public-read", "public-read-write", "authenticated-read"}
 
 	finding := {
-		"id": "SENTINEL-S3-001",
+		"id": "TFGUARD-S3-001",
 		"severity": "HIGH",
 		"title": "S3 bucket ACL allows public access",
 		"description": sprintf("Bucket %s uses ACL %q which can expose objects publicly", [rc.address, acl]),

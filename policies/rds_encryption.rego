@@ -1,5 +1,5 @@
 # Require RDS instances to enable storage encryption.
-package sentinel.rds_encryption
+package tfguard.rds_encryption
 
 import rego.v1
 
@@ -11,7 +11,7 @@ violation contains finding if {
 	not object.get(after, "storage_encrypted", false)
 
 	finding := {
-		"id": "SENTINEL-RDS-001",
+		"id": "TFGUARD-RDS-001",
 		"severity": "HIGH",
 		"title": "RDS instance storage is not encrypted",
 		"description": sprintf("%s should set storage_encrypted = true", [rc.address]),

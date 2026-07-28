@@ -1,4 +1,4 @@
-// Package app orchestrates a full scan: parse plan → risk → policies.
+// Package app orchestrates parse → risk → policy into a single Report.
 package app
 
 import (
@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/SamyBaouche/iac-sentinel/internal/policy"
-	"github.com/SamyBaouche/iac-sentinel/internal/risk"
-	"github.com/SamyBaouche/iac-sentinel/internal/tfplan"
+	"github.com/SamyBaouche/tfguard/internal/policy"
+	"github.com/SamyBaouche/tfguard/internal/risk"
+	"github.com/SamyBaouche/tfguard/internal/tfplan"
 )
 
-// ChangeRisk is one planned change with its classified risk level.
+// ChangeRisk is one planned change with its risk level.
 type ChangeRisk struct {
 	Address string
 	Type    string
@@ -19,7 +19,7 @@ type ChangeRisk struct {
 	Level   risk.Level
 }
 
-// Report is the full scan result shown by the CLI.
+// Report is the full scan result consumed by the CLI renderer.
 type Report struct {
 	PlanPath string
 	Summary  tfplan.Summary
@@ -28,7 +28,7 @@ type Report struct {
 	Policy   policy.Result
 }
 
-// Options controls how Scan runs.
+// Options controls Run.
 type Options struct {
 	PlanPath     string
 	TerraformDir string
@@ -37,7 +37,7 @@ type Options struct {
 	SkipOPA      bool
 }
 
-// Run loads the plan, classifies risk, and runs policy scanners.
+// Run loads the plan, classifies each change, and runs policy scanners.
 func Run(ctx context.Context, opts Options) (Report, error) {
 	plan, err := tfplan.ParseFile(opts.PlanPath)
 	if err != nil {
@@ -81,10 +81,9 @@ func Run(ctx context.Context, opts Options) (Report, error) {
 	}, nil
 }
 
-// ParseFailOn converts a CLI string into a risk.Level.
-// Accepted values: SAFE, CAUTION, DANGER, CRITICAL (case-insensitive).
-// Empty string means "do not fail the process based on threshold".
-func ParseFailOn(s string) (risk.Level, bool, error) {
+// ParseFailOn parses SAFE|CAUTION|DANGER|CRITICAL.
+// Empty string disables fail-on (enabled=false).
+func ParseFailOn(s string) (level risk.Level, enabled bool, err error) {
 	s = strings.TrimSpace(s)
 	if s == "" {
 		return risk.SAFE, false, nil
@@ -103,8 +102,7 @@ func ParseFailOn(s string) (risk.Level, bool, error) {
 	}
 }
 
-// FindingLevel maps a policy severity onto the same scale as risk.Level
-// so --fail-on can consider both risk and findings.
+// FindingLevel maps policy severity onto risk.Level for --fail-on.
 func FindingLevel(sev policy.Severity) risk.Level {
 	switch sev {
 	case policy.SeverityCritical:
@@ -113,15 +111,12 @@ func FindingLevel(sev policy.Severity) risk.Level {
 		return risk.DANGER
 	case policy.SeverityMedium:
 		return risk.CAUTION
-	case policy.SeverityLow, policy.SeverityUnknown:
-		return risk.SAFE
 	default:
 		return risk.SAFE
 	}
 }
 
-// ShouldFail reports whether the process should exit non-zero.
-// enabled=false means --fail-on was not set.
+// ShouldFail is true when max risk or any finding reaches threshold.
 func ShouldFail(rep Report, threshold risk.Level, enabled bool) bool {
 	if !enabled {
 		return false

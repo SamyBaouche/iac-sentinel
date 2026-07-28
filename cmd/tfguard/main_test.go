@@ -11,41 +11,31 @@ import (
 
 func TestRunVersion(t *testing.T) {
 	out := captureStdout(t, func() {
-		code := run([]string{"version"})
-		if code != 0 {
+		if code := run([]string{"version"}); code != 0 {
 			t.Fatalf("exit = %d", code)
 		}
 	})
-	if !strings.Contains(out, "iac-sentinel") {
+	if !strings.Contains(out, "tfguard") {
 		t.Fatalf("version output = %q", out)
 	}
 }
 
 func TestRunScanMissingPlan(t *testing.T) {
-	code := run([]string{"scan"})
-	if code != 2 {
+	if code := run([]string{"scan"}); code != 2 {
 		t.Fatalf("exit = %d, want 2", code)
 	}
 }
 
 func TestRunScanFailOn(t *testing.T) {
 	plan := filepath.Join("..", "..", "testdata", "plan_mixed.json")
-	code := run([]string{
-		"scan",
-		"-plan", plan,
-		"-fail-on", "DANGER",
-		"-skip-checkov",
-		"-skip-tfsec",
-	})
-	// mixed plan deletes aws_db_instance → CRITICAL risk → must fail
+	code := run([]string{"scan", "-plan", plan, "-fail-on", "DANGER", "-skip-checkov", "-skip-tfsec"})
 	if code != 1 {
-		t.Fatalf("exit = %d, want 1 (fail-on triggered)", code)
+		t.Fatalf("exit = %d, want 1", code)
 	}
 }
 
 func TestRunUnknownCommand(t *testing.T) {
-	code := run([]string{"nope"})
-	if code != 2 {
+	if code := run([]string{"nope"}); code != 2 {
 		t.Fatalf("exit = %d, want 2", code)
 	}
 }
@@ -66,7 +56,6 @@ func captureStdout(t *testing.T, fn func()) string {
 		_, _ = io.Copy(&buf, r)
 		done <- buf.String()
 	}()
-
 	fn()
 	_ = w.Close()
 	return <-done

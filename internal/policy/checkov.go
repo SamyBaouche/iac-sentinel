@@ -9,8 +9,6 @@ import (
 	"strings"
 )
 
-// checkovReport is the subset of Checkov JSON output we care about.
-// Checkov prints a large document; we only map failed_checks.
 type checkovReport struct {
 	FailedChecks []checkovCheck `json:"failed_checks"`
 	Results      *struct {
@@ -19,32 +17,22 @@ type checkovReport struct {
 }
 
 type checkovCheck struct {
-	CheckID    string `json:"check_id"`
-	CheckName  string `json:"check_name"`
-	CheckClass string `json:"check_class"`
-	Resource   string `json:"resource"`
-	FilePath   string `json:"file_path"`
-	Guideline  string `json:"guideline"`
-	Severity   string `json:"severity"`
+	CheckID   string `json:"check_id"`
+	CheckName string `json:"check_name"`
+	Resource  string `json:"resource"`
+	FilePath  string `json:"file_path"`
+	Guideline string `json:"guideline"`
+	Severity  string `json:"severity"`
 }
 
-// RunCheckov executes the Checkov CLI on dir and converts failed checks
-// into Finding values.
-//
-// Behaviour when Checkov is missing:
-//   - we do NOT return a hard error
-//   - we add a Warning so the caller can print it
-//   - Findings stays empty
+// RunCheckov runs the Checkov CLI on dir.
+// If Checkov is not installed, returns a warning and no error.
 func RunCheckov(ctx context.Context, dir string) (Result, error) {
 	path, err := exec.LookPath("checkov")
 	if err != nil {
-		return Result{
-			Warnings: []string{"checkov not found on PATH; skipping Checkov scan"},
-		}, nil
+		return Result{Warnings: []string{"checkov not found on PATH; skipping Checkov scan"}}, nil
 	}
 
-	// checkov -d <dir> -o json --quiet
-	// Exit code can be non-zero when findings exist; that is normal.
 	cmd := exec.CommandContext(ctx, path, "-d", dir, "-o", "json", "--quiet", "--compact")
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -53,7 +41,6 @@ func RunCheckov(ctx context.Context, dir string) (Result, error) {
 	runErr := cmd.Run()
 	out := stdout.Bytes()
 	if len(bytes.TrimSpace(out)) == 0 {
-		// No JSON at all — if the binary failed for a real reason, surface it.
 		if runErr != nil {
 			msg := strings.TrimSpace(stderr.String())
 			if msg == "" {
@@ -71,14 +58,11 @@ func RunCheckov(ctx context.Context, dir string) (Result, error) {
 	return Result{Findings: findings}, nil
 }
 
-// parseCheckovJSON turns Checkov JSON bytes into []Finding.
-// Exported for tests via this package-level helper (unexported name).
 func parseCheckovJSON(data []byte) ([]Finding, error) {
 	var report checkovReport
 	if err := json.Unmarshal(data, &report); err != nil {
 		return nil, err
 	}
-
 	checks := report.FailedChecks
 	if len(checks) == 0 && report.Results != nil {
 		checks = report.Results.FailedChecks

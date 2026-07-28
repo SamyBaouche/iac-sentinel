@@ -1,4 +1,4 @@
-module github.com/SamyBaouche/iac-sentinel
+module github.com/SamyBaouche/tfguard
 
 go 1.26.2
 
