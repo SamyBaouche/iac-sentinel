@@ -1,5 +1,7 @@
 # IaC Sentinel
 
+**Language:** English | [Français](README.fr.md)
+
 Automated reviewer for Terraform plans. IaC Sentinel reads `terraform plan -json` output and surfaces destructive changes, policy violations, and (planned) cost impact so teams do not ship risky infrastructure changes unnoticed.
 
 [![Go](https://img.shields.io/badge/Go-1.26+-00ADD8?logo=go&logoColor=white)](https://go.dev/)
@@ -53,7 +55,7 @@ flowchart TB
 
   ROOT --> GOMOD[go.mod / go.sum]
   ROOT --> MAKE[Makefile]
-  ROOT --> README[README.md]
+  ROOT --> README[README.md / README.fr.md]
   ROOT --> POLDIR[policies/]
   ROOT --> INTERNAL[internal/]
   ROOT --> TESTDATA[testdata/]
@@ -147,6 +149,7 @@ iac-sentinel/
 ├── go.mod / go.sum
 ├── Makefile
 ├── README.md
+├── README.fr.md
 ├── policies/                 OPA Rego rules (embedded in the binary)
 │   ├── embed.go
 │   ├── s3_public.rego
