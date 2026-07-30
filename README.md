@@ -21,8 +21,10 @@ flowchart LR
   A[plan.json] --> B[tfplan]
   B --> C[risk]
   B --> D[policy]
+  B --> H[cost]
   C --> E[app.Report]
   D --> E
+  H --> E
   E --> F[render + CLI]
   F --> G["exit 0 / 1 / 2"]
 ```
@@ -32,7 +34,8 @@ flowchart LR
 | Parse | `internal/tfplan` | Decode plan JSON; collapse actions; summarize mutations |
 | Risk | `internal/risk` | Score each change; escalate stateful AWS types |
 | Policy | `internal/policy` | OPA Rego (embedded) + optional Checkov/tfsec → `Finding` |
-| Orchestrate | `internal/app` | Build `Report`; evaluate `-fail-on` |
+| Cost | `internal/cost` | Static AWS monthly delta from before/after attributes |
+| Orchestrate | `internal/app` | Build `Report`; evaluate `-fail-on` / `--max-cost-increase` |
 | Present | `internal/render` | Terminal tables |
 | CLI | `cmd/tfguard` | Cobra commands: `scan`, `version` |
 
@@ -75,6 +78,9 @@ make build
 
 # With HCL scanners + CI gate
 ./bin/tfguard scan --plan plan.json --dir ./infra --fail-on DANGER
+
+# Fail when monthly cost delta exceeds $50
+./bin/tfguard scan --plan plan.json --max-cost-increase 50
 ```
 
 | Flag | Description |
@@ -82,7 +88,8 @@ make build
 | `--plan` | Path to plan JSON (**required**) |
 | `--dir` | Terraform root for Checkov/tfsec |
 | `--fail-on` | `SAFE` \| `CAUTION` \| `DANGER` \| `CRITICAL` |
-| `--skip-checkov` / `--skip-tfsec` / `--skip-opa` | Disable a scanner |
+| `--max-cost-increase` | Exit 1 if monthly cost delta USD exceeds this value |
+| `--skip-checkov` / `--skip-tfsec` / `--skip-opa` / `--skip-cost` | Disable a stage |
 
 **Exit codes:** `0` ok · `1` threshold hit or runtime error · `2` usage error
 
@@ -114,6 +121,7 @@ cmd/tfguard/       CLI entrypoint
 internal/tfplan/   plan parse + summary
 internal/risk/     risk levels
 internal/policy/   Checkov / tfsec / OPA
+internal/cost/     static AWS cost delta
 internal/app/      orchestration + fail-on
 internal/render/   terminal report
 policies/          embedded Rego rules
@@ -122,11 +130,17 @@ testdata/          fixtures for unit tests
 
 Module path: `github.com/SamyBaouche/tfguard`
 
+## Cost estimate
+
+Static us-east-1 on-demand prices (~20 SKUs: EC2, RDS, ElastiCache, NAT Gateway, …).
+Extracts billable attributes from each change’s before/after (`instance_type`, `instance_class`, `allocated_storage`, …), sums a monthly delta, and shows the top 3 drivers.
+
+Use `--max-cost-increase <USD>` as a CI gate on positive deltas. Figures are for plan review, not billing accuracy.
+
 ## Roadmap
 
-1. **Done** — parse, risk, policies, CLI, `-fail-on`
-2. **Next** — static AWS cost delta on the report
-3. **Planned** — ML risk score, optional LLM explainer (`--no-ai`), GitHub Action, GoReleaser
+1. **Done** — parse, risk, policies, CLI, `-fail-on`, static AWS cost delta
+2. **Planned** — ML risk score, optional LLM explainer (`--no-ai`), GitHub Action, GoReleaser
 
 ## Development
 

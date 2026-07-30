@@ -1,12 +1,14 @@
-// Package app wires tfplan + risk + policy into one Report for the CLI.
+// Package app wires tfplan + risk + policy + cost into one Report for the CLI.
 package app
 
 import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"strconv"
 	"strings"
 
+	"github.com/SamyBaouche/tfguard/internal/cost"
 	"github.com/SamyBaouche/tfguard/internal/policy"
 	"github.com/SamyBaouche/tfguard/internal/risk"
 	"github.com/SamyBaouche/tfguard/internal/tfplan"
@@ -40,6 +42,7 @@ type Report struct {
 	Changes  []ChangeRisk
 	MaxRisk  risk.Level // highest Level among Changes
 	Policy   policy.Result
+	Cost     cost.Estimate
 }
 
 // Options controls Run (plan path and which scanners to skip).
@@ -49,6 +52,7 @@ type Options struct {
 	SkipCheckov  bool
 	SkipTfsec    bool
 	SkipOPA      bool
+	SkipCost     bool
 	Progress     Progress // optional; animated CLI steps when set
 }
 
@@ -100,12 +104,20 @@ func Run(ctx context.Context, opts Options) (Report, error) {
 	}
 	prog.Done(fmt.Sprintf("%d findings", len(pol.Findings)))
 
+	var costEst cost.Estimate
+	if !opts.SkipCost {
+		prog.Start("Estimating cost delta")
+		costEst = cost.EstimateChanges(summary.Changes)
+		prog.Done(fmt.Sprintf("%+.2f USD/mo · %d priced", costEst.MonthlyDeltaUSD, costEst.Priced))
+	}
+
 	return Report{
 		PlanPath: opts.PlanPath,
 		Summary:  summary,
 		Changes:  changes,
 		MaxRisk:  maxRisk,
 		Policy:   pol,
+		Cost:     costEst,
 	}, nil
 }
 
@@ -160,4 +172,26 @@ func ShouldFail(rep Report, threshold risk.Level, enabled bool) bool {
 		}
 	}
 	return false
+}
+
+// ParseMaxCostIncrease parses a USD/month ceiling for --max-cost-increase.
+// An empty string disables the gate (enabled=false).
+func ParseMaxCostIncrease(s string) (limit float64, enabled bool, err error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0, false, nil
+	}
+	v, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return 0, false, fmt.Errorf("invalid --max-cost-increase %q (want a number, e.g. 50)", s)
+	}
+	return v, true, nil
+}
+
+// CostExceeded reports whether the monthly cost delta is above the configured ceiling.
+func CostExceeded(rep Report, limit float64, enabled bool) bool {
+	if !enabled {
+		return false
+	}
+	return rep.Cost.MonthlyDeltaUSD > limit
 }

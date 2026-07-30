@@ -24,6 +24,8 @@ func Terminal(w io.Writer, rep app.Report) error {
 
 	writeSummary(w, style, rep)
 	fmt.Fprintln(w)
+	writeCost(w, style, rep)
+	fmt.Fprintln(w)
 	if err := writeChanges(w, style, rep); err != nil {
 		return err
 	}
@@ -50,6 +52,49 @@ func writeSummary(w io.Writer, style ui.Style, rep app.Report) {
 	)
 	ui.BoxLine(w, style, line)
 	ui.BoxEnd(w, style)
+}
+
+func writeCost(w io.Writer, style ui.Style, rep app.Report) {
+	ui.BoxTitle(w, style, "Cost estimate")
+	delta := rep.Cost.MonthlyDeltaUSD
+	deltaStr := fmt.Sprintf("%+.2f USD/mo", delta)
+	switch {
+	case delta > 0:
+		deltaStr = style.Red(deltaStr)
+	case delta < 0:
+		deltaStr = style.Green(deltaStr)
+	default:
+		deltaStr = style.Dim(deltaStr)
+	}
+	ui.BoxLine(w, style, style.Dim("delta")+"  "+style.Bold(deltaStr))
+	ui.BoxLine(w, style, style.Dim("priced")+" "+fmt.Sprintf("%d resources · %d unpriced", rep.Cost.Priced, rep.Cost.Skipped))
+	ui.BoxEnd(w, style)
+
+	if len(rep.Cost.Drivers) == 0 {
+		fmt.Fprintln(w, style.Dim("  (no priced drivers)"))
+		return
+	}
+
+	ui.Section(w, style, "Top cost drivers")
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	fmt.Fprintf(tw, "  %s\t%s\t%s\t%s\n",
+		style.Dim("DELTA"), style.Dim("BEFORE"), style.Dim("AFTER"), style.Dim("ADDRESS"))
+	for _, d := range rep.Cost.Drivers {
+		deltaCell := fmt.Sprintf("%+.2f", d.DeltaUSD)
+		switch {
+		case d.DeltaUSD > 0:
+			deltaCell = style.Red(deltaCell)
+		case d.DeltaUSD < 0:
+			deltaCell = style.Green(deltaCell)
+		}
+		fmt.Fprintf(tw, "  %s\t%s\t%s\t%s\n",
+			deltaCell,
+			fmt.Sprintf("%.2f", d.BeforeUSD),
+			fmt.Sprintf("%.2f", d.AfterUSD),
+			d.Address,
+		)
+	}
+	_ = tw.Flush()
 }
 
 func writeChanges(w io.Writer, style ui.Style, rep app.Report) error {
@@ -105,11 +150,12 @@ func writeWarnings(w io.Writer, style ui.Style, rep app.Report) {
 
 func writeFooter(w io.Writer, style ui.Style, rep app.Report) {
 	total := rep.Summary.Creates + rep.Summary.Updates + rep.Summary.Replaces + rep.Summary.Deletes
-	msg := fmt.Sprintf("  %s  %d changes scanned · %d policy findings · max risk %s",
+	msg := fmt.Sprintf("  %s  %d changes scanned · %d policy findings · max risk %s · cost %+.2f USD/mo",
 		style.Cyan("▸"),
 		total,
 		len(rep.Policy.Findings),
 		style.Risk(rep.MaxRisk.String()),
+		rep.Cost.MonthlyDeltaUSD,
 	)
 	fmt.Fprintln(w, msg)
 	fmt.Fprintln(w, style.Dim("  "+strings.Repeat("─", 48)))

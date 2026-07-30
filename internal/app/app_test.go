@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/SamyBaouche/tfguard/internal/cost"
 	"github.com/SamyBaouche/tfguard/internal/policy"
 	"github.com/SamyBaouche/tfguard/internal/risk"
 )
@@ -39,6 +40,32 @@ func TestShouldFail(t *testing.T) {
 	}
 }
 
+func TestParseMaxCostIncrease(t *testing.T) {
+	t.Parallel()
+	_, enabled, err := ParseMaxCostIncrease("")
+	if err != nil || enabled {
+		t.Fatal("empty should be disabled")
+	}
+	got, enabled, err := ParseMaxCostIncrease("50.5")
+	if err != nil || !enabled || got != 50.5 {
+		t.Fatalf("got %v enabled=%v err=%v", got, enabled, err)
+	}
+	if _, _, err := ParseMaxCostIncrease("nope"); err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestCostExceeded(t *testing.T) {
+	t.Parallel()
+	rep := Report{Cost: cost.Estimate{MonthlyDeltaUSD: 12.5}}
+	if CostExceeded(rep, 20, true) || !CostExceeded(rep, 10, true) {
+		t.Fatal("unexpected CostExceeded")
+	}
+	if CostExceeded(rep, 0, false) {
+		t.Fatal("disabled gate should not trip")
+	}
+}
+
 func TestRunMixedPlan(t *testing.T) {
 	t.Parallel()
 	rep, err := Run(context.Background(), Options{
@@ -51,5 +78,9 @@ func TestRunMixedPlan(t *testing.T) {
 	}
 	if rep.Summary.Creates != 1 || rep.MaxRisk < risk.DANGER {
 		t.Fatalf("unexpected report: %+v", rep)
+	}
+	// plan_mixed: t3.micro → t3.small ≈ +7.59 USD/mo
+	if rep.Cost.Priced < 1 || rep.Cost.MonthlyDeltaUSD <= 0 {
+		t.Fatalf("expected positive cost delta, got %+v", rep.Cost)
 	}
 }
